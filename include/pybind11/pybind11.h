@@ -1255,6 +1255,26 @@ private:
     bool flag_;
 };
 
+// Use to activate Py_MOD_PER_INTERPRETER_GIL_SUPPORTED
+class mod_per_interpreter_gil {
+public:
+    explicit mod_per_interpreter_gil(bool flag = true) : flag_(flag) {}
+    bool flag() const { return flag_; }
+
+private:
+    bool flag_;
+};
+
+// Use to activate Py_MOD_MULTIPLE_INTERPRETERS_SUPPORTED
+class mod_multi_interpreter_one_gil {
+public:
+    explicit mod_multi_interpreter_one_gil(bool flag = true) : flag_(flag) {}
+    bool flag() const { return flag_; }
+
+private:
+    bool flag_;
+};
+
 PYBIND11_NAMESPACE_BEGIN(detail)
 
 inline bool gil_not_used_option() { return false; }
@@ -1269,7 +1289,34 @@ inline bool gil_not_used_option(F &&, O &&...o) {
     return false || gil_not_used_option(o...);
 }
 
-PYBIND11_NAMESPACE_END(detail)
+#ifdef Py_mod_multiple_interpreters
+inline void *multi_interp_option() { return Py_MOD_MULTIPLE_INTERPRETERS_NOT_SUPPORTED; }
+#    ifdef PYBIND11_SUBINTERPRETER_SUPPORT
+template <typename F, typename... O>
+void *multi_interp_option(F &&, O &&...o);
+template <typename... O>
+void *multi_interp_option(mod_multi_interpreter_one_gil f, O &&...o);
+template <typename... O>
+inline void *multi_interp_option(mod_per_interpreter_gil f, O &&...o) {
+    if (f.flag()) {
+        return Py_MOD_PER_INTERPRETER_GIL_SUPPORTED;
+    }
+    return multi_interp_option(o...);
+}
+template <typename... O>
+inline void *multi_interp_option(mod_multi_interpreter_one_gil f, O &&...o) {
+    void *others = multi_interp_option(o...);
+    if (!f.flag() || others == Py_MOD_PER_INTERPRETER_GIL_SUPPORTED) {
+        return others;
+    }
+    return Py_MOD_MULTIPLE_INTERPRETERS_SUPPORTED;
+}
+#    endif
+template <typename F, typename... O>
+inline void *multi_interp_option(F &&, O &&...o) {
+    return multi_interp_option(o...);
+}
+#endif
 
 /// Wrapper for Python extension modules
 class module_ : public object {
@@ -1411,7 +1458,7 @@ public:
 
         ``def`` should point to a statically allocated module_def.
         ``slots`` must point to an initialized array of slots with space for at
-           least one additional slot to be populated based on the options.
+           least two additional slots to be populated based on the options.
     \endrst */
     template <typename... Options>
     static object init_module_def(const char *name,
@@ -1425,6 +1472,18 @@ public:
         }
 
         bool nogil PYBIND11_MAYBE_UNUSED = detail::gil_not_used_option(options...);
+
+#ifdef Py_mod_multiple_interpreters
+        slots[i].slot = Py_mod_multiple_interpreters;
+        slots[i].value = detail::multi_interp_option(options...);
+        if (nogil && slots[i].value == Py_MOD_MULTIPLE_INTERPRETERS_SUPPORTED) {
+            // if you support free threading and multi-interpreters,
+            // then you definitely also support per-interpreter GIL
+            // even if you don't know it.
+            slots[i].value = Py_MOD_PER_INTERPRETER_GIL_SUPPORTED;
+        }
+        ++i;
+#endif
 
         if (nogil) {
 #ifdef Py_mod_gil
