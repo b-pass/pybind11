@@ -1255,6 +1255,22 @@ private:
     bool flag_;
 };
 
+PYBIND11_NAMESPACE_BEGIN(detail)
+
+inline bool gil_not_used_option() { return false; }
+template <typename F, typename... O>
+bool gil_not_used_option(F &&, O &&...o);
+template <typename... O>
+inline bool gil_not_used_option(mod_gil_not_used f, O &&...o) {
+    return f.flag() || gil_not_used_option(o...);
+}
+template <typename F, typename... O>
+inline bool gil_not_used_option(F &&, O &&...o) {
+    return false || gil_not_used_option(o...);
+}
+
+PYBIND11_NAMESPACE_END(detail)
+
 /// Wrapper for Python extension modules
 class module_ : public object {
 public:
@@ -1388,6 +1404,63 @@ public:
         //       returned from PyInit_...
         //       For Python 2, reinterpret_borrow was correct.
         return reinterpret_borrow<module_>(m);
+    }
+
+    /** \rst
+        Initialized a module def for use with multi-phase module initialization.
+
+        ``def`` should point to a statically allocated module_def.
+        ``slots`` must point to an initialized array of slots with space for at
+           least one additional slot to be populated based on the options.
+    \endrst */
+    template <typename... Options>
+    static object init_module_def(const char *name,
+                                  const char *doc,
+                                  module_def *def,
+                                  PyModuleDef_Slot *slots,
+                                  Options &&...options) {
+        int i = 0;
+        while (slots[i].slot != 0) {
+            ++i;
+        }
+
+        bool nogil PYBIND11_MAYBE_UNUSED = detail::gil_not_used_option(options...);
+
+        if (nogil) {
+#ifdef Py_mod_gil
+            slots[i].slot = Py_mod_gil;
+#    ifdef Py_GIL_DISABLED
+            slots[i].value = Py_MOD_GIL_NOT_USED;
+#    else
+            slots[i].value = Py_MOD_GIL_USED;
+#    endif
+            ++i;
+#endif
+        }
+
+        slots[i].slot = 0;
+        slots[i].value = nullptr;
+
+        // module_def is PyModuleDef
+        // Placement new (not an allocation).
+        def = new (def)
+            PyModuleDef{/* m_base */ PyModuleDef_HEAD_INIT,
+                        /* m_name */ name,
+                        /* m_doc */ options::show_user_defined_docstrings() ? doc : nullptr,
+                        /* m_size */ 0,
+                        /* m_methods */ nullptr,
+                        /* m_slots */ slots,
+                        /* m_traverse */ nullptr,
+                        /* m_clear */ nullptr,
+                        /* m_free */ nullptr};
+        auto *m = PyModuleDef_Init(def);
+        if (m == nullptr) {
+            if (PyErr_Occurred()) {
+                throw error_already_set();
+            }
+            pybind11_fail("Internal error in module_::init_module_def()");
+        }
+        return reinterpret_borrow<object>(m);
     }
 };
 
