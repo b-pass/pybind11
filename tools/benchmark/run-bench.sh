@@ -14,7 +14,7 @@ if [ ! -e /workspace/pybind11 ]; then
 fi
 
 if [ ! -e /usr/include/nanobind ]; then
-	git clone https://github.com/wjakob/nanobind.git /workspace/nanobind
+	git clone --recursive https://github.com/wjakob/nanobind.git /workspace/nanobind
 	cd /workspace/nanobind/
 	mkdir build
 	cd build

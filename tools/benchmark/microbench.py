@@ -31,8 +31,7 @@ pybind11_branch_path = '/workspace/pybind11_branch/include'
 boost_path = '/usr/include/boost'
 
 cmd_base = ['clang++', '-march=native', '-shared', '-rpath', '..', '-std=c++17', '-I', '../include', '-I', gp()['include'],
-            '-Wno-deprecated-declarations', '-fPIC', f'-L{boost_path}/stage/lib', '-L..', '-fno-stack-protector',
-            '-DPYBIND11_USE_SMART_HOLDER_AS_DEFAULT']
+            '-Wno-deprecated-declarations', '-fPIC', f'-L{boost_path}/stage/lib', '-L..', '-fno-stack-protector']
 
 def gen_file(name, func, libs=('cython', 'boost', 'pybind11', 'pybind11_branch', 'nanobind')):
     for i, lib in enumerate(libs):    
@@ -271,17 +270,19 @@ plot_colors = {
     'boost': cycle[1],
     'cython': cycle[4],
     'pybind11': cycle[3],
+    'pybind11_branch': cycle[8],
     'cppyy' : cycle[8],
-    'python': 'None',
+    #'python': 'None',
     'nanobind': cycle[0]
 }
 
 plot_labels = {
     'boost' : 'Boost.Python',
-    'pybind11' : 'pybind11',    
+    'pybind11' : 'pybind11',
+    'pybind11_branch' : 'pybind11 (branch)',
     'cython' : 'Cython',
     'nanobind' : 'nanobind',
-    'python' : 'Python'
+    #'python' : 'Python'
 }
 
 if cppyy is not None:
@@ -347,5 +348,3 @@ fig.tight_layout()
 plt.savefig('perf.png', facecolor='white', dpi=200, bbox_inches='tight', pad_inches = 0)
 plt.savefig('perf.svg', facecolor='white', bbox_inches='tight', pad_inches = 0)
 plt.show()
-
-
